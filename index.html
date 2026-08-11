@@ -75,8 +75,50 @@ function num(v){if(v===null||v===undefined||v==="")return 0;return parseFloat(St
 function find(o, terms){let k=Object.keys(o).find(x=>terms.some(t=>x.toLowerCase().replace(/[^a-z]/g,"").includes(t)));return k?o[k]:""}
 function cat(s){s=String(s).toLowerCase();if(/salary|payroll/.test(s))return"Salary";if(/upi|gpay|googlepay|phonepe|paytm|bhim/.test(s))return"UPI";if(/atm|cash withdrawal|withdrawal/.test(s))return"Cash Withdrawal";if(/emi|loan|credit card|hdfc card/.test(s))return"EMI/Credit Card";if(/electric|jbvnl|water|gas|recharge|mobile|airtel|jio|vi\b/.test(s))return"Bills/Recharge";if(/amazon|flipkart|myntra|shopping/.test(s))return"Shopping";if(/fuel|petrol|diesel|hpcl|iocl|bpcl/.test(s))return"Fuel";if(/food|swiggy|zomato|restaurant/.test(s))return"Food";if(/neft|rtgs|imps|transfer/.test(s))return"Transfer";return"Other"}
 function process(rows){data=rows.map(o=>{let date=find(o,["date","txndate","transactiondate"]),desc=find(o,["description","narration","particular","remarks","details"]),credit=num(find(o,["credit","deposit","cr"])),debit=num(find(o,["debit","withdrawal","dr"])),amount=num(find(o,["amount","transactionamount"])),balance=num(find(o,["balance","closingbalance"]));if(!credit&&!debit&&amount){let v=Object.values(o).join(" ");if(/credit|deposit|received/i.test(v))credit=amount;else debit=amount}return{date,desc,credit,debit,balance,category:cat(desc)}}).filter(x=>x.date||x.desc||x.credit||x.debit);render()}
-$("file").onchange=e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{let wb=XLSX.read(r.result,{type:/\.csv$/i.test(f.name)?"string":"array"});process(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}))};/\.csv$/i.test(f.name)?r.readAsText(f):r.readAsArrayBuffer(f)}
-["search","type","cat"].forEach(x=>$(x).oninput=render);
+$("file").onchange = e => {
+    let f = e.target.files[0];
+
+    if (!f) return;
+
+    alert("File processing शुरू...");
+
+    let r = new FileReader();
+
+    r.onload = () => {
+        try {
+
+            let wb = XLSX.read(
+                r.result,
+                {
+                    type: /\.csv$/i.test(f.name)
+                        ? "string"
+                        : "array"
+                }
+            );
+
+            let rows = XLSX.utils.sheet_to_json(
+                wb.Sheets[wb.SheetNames[0]],
+                { defval: "" }
+            );
+
+            alert("Rows found: " + rows.length);
+
+            process(rows);
+
+        } catch (err) {
+
+            alert(
+                "Error: " + err.message
+            );
+
+            console.log(err);
+        }
+    };
+
+    /\.csv$/i.test(f.name)
+        ? r.readAsText(f)
+        : r.readAsArrayBuffer(f);
+};
 function money(n){return"₹"+Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:2})}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function render(){if(!data.length){$("app").style.display="none";return}$("app").style.display="block";let q=$("search").value.toLowerCase(),t=$("type").value,c=$("cat").value;filtered=data.filter(x=>(!q||(`${x.desc} ${x.date}`).toLowerCase().includes(q))&&(!t||(t==="credit"?x.credit>0:x.debit>0))&&(!c||x.category===c));let inc=data.reduce((s,x)=>s+x.credit,0),exp=data.reduce((s,x)=>s+x.debit,0),save=inc-exp;$("income").textContent=money(inc);$("expense").textContent=money(exp);$("saving").textContent=money(save);$("count").textContent=data.length;
