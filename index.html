@@ -1,0 +1,233 @@
+<!doctype html>
+
+<html lang="hi">
+
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1f4e78">
+<title>Kaushal Finance — Universal Statement Reader OCR</title>
+<style>
+
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7fb;color:#17202a}
+header{background:#1f4e78;color:#fff;padding:18px 16px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:22px}header p{margin:6px 0 0;font-size:13px;opacity:.9}
+.container{max-width:1100px;margin:auto;padding:16px}.card{background:#fff;border-radius:14px;padding:16px;margin:14px 0;box-shadow:0 2px 10px #00000012}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:160px}
+button,input,select{font:inherit;padding:11px;border:1px solid #ccd5df;border-radius:9px}
+button{background:#1f4e78;color:#fff;border:0;font-weight:600;cursor:pointer}button.secondary{background:#607d8b}button.danger{background:#b42318}
+.drop{border:2px dashed #9fb2c6;border-radius:12px;padding:24px;text-align:center;background:#f8fbff}
+.drop.drag{background:#eaf4ff;border-color:#1f4e78}.small{font-size:12px;color:#5f6b76}
+.progress{height:10px;background:#e4e9ef;border-radius:8px;overflow:hidden}.bar{height:100%;width:0;background:#1f4e78}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.stat{background:#f7f9fc;padding:12px;border-radius:10px}.stat b{display:block;font-size:20px}
+.tablewrap{overflow:auto;max-height:520px}table{width:100%;border-collapse:collapse;min-width:850px}th,td{padding:8px;border-bottom:1px solid #e6ebf0;text-align:left;font-size:13px}th{background:#eef3f8;position:sticky;top:0}
+.green{color:#087f23}.red{color:#b42318}.notice{padding:10px;border-radius:9px;background:#fff7e6;color:#7a4b00;font-size:13px}
+.hidden{display:none}.right{text-align:right}
+
+</style>
+
+
+</head>
+
+<body>
+
+<header><h1>Kaushal Finance</h1><p>Universal Bank Statement Reader • PDF • Scanned PDF OCR • CSV • Excel</p></header>
+
+<div class="container">
+<div class="card">
+  <h2>1. Statement Upload</h2>
+  <div id="drop" class="drop">
+    <b>PDF / CSV / XLS / XLSX यहाँ चुनें</b><br>
+    <span class="small">Scanned PDF में OCR अपने-आप चलाने की कोशिश होगी।</span><br><br>
+    <input id="file" type="file" accept=".pdf,.csv,.xls,.xlsx,application/pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+  </div>
+  <div class="row" style="margin-top:12px">
+    <select id="ocrLang">
+      <option value="eng">OCR: English numbers/text</option>
+      <option value="hin+eng">OCR: Hindi + English</option>
+    </select>
+    <select id="dpi">
+      <option value="1.5">OCR quality: Normal</option>
+      <option value="2">OCR quality: High</option>
+      <option value="2.5">OCR quality: Very High</option>
+    </select>
+    <button id="process">Read Statement</button>
+  </div>
+  <div style="margin-top:12px"><div class="progress"><div id="bar" class="bar"></div></div><p id="status" class="small">Ready.</p></div>
+</div>
+
+<div class="card">
+  <h2>2. Filters / Analysis</h2>
+  <div class="row">
+    <input id="search" placeholder="Search description / reference / amount">
+    <select id="type"><option value="">All transactions</option><option value="credit">Credits only</option><option value="debit">Debits only</option></select>
+    <input id="from" type="date"><input id="to" type="date">
+  </div>
+  <div class="stats" style="margin-top:12px">
+    <div class="stat">Transactions<b id="count">0</b></div>
+    <div class="stat">Credit <b class="green" id="credits">₹0</b></div>
+    <div class="stat">Debit <b class="red" id="debits">₹0</b></div>
+    <div class="stat">Net <b id="net">₹0</b></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>3. Transactions</h2>
+  <div class="row">
+    <button id="csvOut">Export CSV</button>
+    <button id="jsonOut" class="secondary">Export JSON</button>
+    <button id="clear" class="danger">Clear</button>
+  </div>
+  <p class="notice">OCR में मिले text से columns अनुमानित किए जाते हैं। किसी bank के unusual format में कुछ rows manually verify करें।</p>
+  <div class="tablewrap"><table><thead><tr>
+    <th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Balance</th><th>Raw/OCR</th>
+  </tr></thead><tbody id="tbody"></tbody></table></div>
+</div>
+
+<div class="card">
+  <h2>OCR Text</h2>
+  <textarea id="ocrText" style="width:100%;min-height:180px" placeholder="Scanned PDF का OCR text यहाँ दिखेगा..."></textarea>
+</div>
+</div>
+
+<!-- Browser-side libraries. Internet is required for the first load. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module">
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js">
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+</script>
+
+
+<script type="module">
+
+import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
+
+const $=id=>document.getElementById(id);
+let rows=[];
+
+function money(n){return Number(n||0).toLocaleString('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2})}
+function cleanAmount(s){
+  if(s==null)return null;
+  s=String(s).replace(/[₹,\s]/g,'').replace(/(cr|dr)$/i,'');
+  const m=s.match(/-?\d+(?:\.\d+)?/); return m?Math.abs(Number(m[0])):null;
+}
+function dateISO(s){
+  s=String(s||'').trim().replace(/[.]/g,'/');
+  let m=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+  if(!m)return '';
+  let y=Number(m[3]); if(y<100)y+=2000;
+  return `${y}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+}
+function parseLines(text){
+  const out=[];
+  for(const line0 of text.split(/\r?\n/)){
+    const line=line0.replace(/\t+/g,' ').replace(/\s{2,}/g,' | ').trim();
+    if(!line)continue;
+    const d=line.match(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})\b/);
+    if(!d)continue;
+    const iso=dateISO(d[1]);
+    const after=line.slice((d.index||0)+d[1].length).trim();
+    const nums=[...after.matchAll(/(?:₹\s*)?-?\d[\d,]*(?:\.\d{1,2})?/g)].map(x=>cleanAmount(x[0]));
+    if(nums.length<1)continue;
+    const desc=after.replace(/(?:₹\s*)?-?\d[\d,]*(?:\.\d{1,2})?/g,' ').replace(/\|/g,' ').replace(/\s+/g,' ').trim();
+    let debit=null,credit=null,balance=null;
+    const lower=after.toLowerCase();
+    if(/\b(debit|withdraw|dr)\b/.test(lower)&&nums.length>=1) debit=nums[0];
+    else if(/\b(credit|deposit|cr)\b/.test(lower)&&nums.length>=1) credit=nums[0];
+    if(nums.length>=3){ debit=debit??nums[0]; credit=credit??nums[1]; balance=nums[2];}
+    else if(nums.length===2){ balance=nums[1]; if(/credit|deposit|cr/i.test(lower)) credit=nums[0]; else if(/debit|withdraw|dr/i.test(lower)) debit=nums[0]; else debit=nums[0];}
+    else if(nums.length===1){ if(/credit|deposit|cr/i.test(lower)) credit=nums[0]; else debit=nums[0];}
+    out.push({date:iso,description:desc||after,debit,credit,balance,raw:line0});
+  }
+  return out;
+}
+function render(){
+  const q=$('search').value.toLowerCase(), typ=$('type').value, f=$('from').value,t=$('to').value;
+  const filtered=rows.filter(r=>{
+    const hay=(r.date+' '+r.description+' '+r.raw+' '+[r.debit,r.credit,r.balance].join(' ')).toLowerCase();
+    if(q&&!hay.includes(q))return false;
+    if(typ==='debit'&&!(r.debit>0))return false;
+    if(typ==='credit'&&!(r.credit>0))return false;
+    if(f&&r.date&&r.date<f)return false;if(t&&r.date&&r.date>t)return false;
+    return true;
+  });
+  $('tbody').innerHTML=filtered.map(r=>`<tr><td>${r.date||''}</td><td>${esc(r.description)}</td><td class="red">${r.debit?money(r.debit):''}</td><td class="green">${r.credit?money(r.credit):''}</td><td>${r.balance?money(r.balance):''}</td><td class="small">${esc(r.raw)}</td></tr>`).join('');
+  const cr=filtered.reduce((a,r)=>a+(r.credit||0),0), dr=filtered.reduce((a,r)=>a+(r.debit||0),0);
+  $('count').textContent=filtered.length;$('credits').textContent=money(cr);$('debits').textContent=money(dr);$('net').textContent=money(cr-dr);
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function setStatus(s,p){$('status').textContent=s;if(p!=null)$('bar').style.width=p+'%'}
+
+async function pdfText(file){
+  const buf=await file.arrayBuffer(); const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let text='', hasText=false;
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i); const c=await page.getTextContent();
+    const t=c.items.map(x=>x.str).join(' ');
+    if(t.trim())hasText=true;
+    text+=t+'\\n';
+    setStatus(`PDF text पढ़ रहे हैं: page ${i}/${pdf.numPages}`,i/pdf.numPages*25);
+  }
+  // If there is no useful embedded text, render each page and OCR it.
+  if(hasText && text.replace(/\s/g,'').length>100) return text;
+  text='';
+  const lang=$('ocrLang').value, scale=Number($('dpi').value);
+  const worker=await Tesseract.createWorker(lang,1,{logger:m=>{
+    if(m.status)setStatus(`OCR: ${m.status} ${m.progress?Math.round(m.progress*100)+'%':''}`,25+(m.progress||0)*70);
+  }});
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i), vp=page.getViewport({scale});
+    const canvas=document.createElement('canvas');canvas.width=vp.width;canvas.height=vp.height;
+    await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+    const {data:{text:t}}=await worker.recognize(canvas);
+    text+=t+'\\n';
+    setStatus(`Scanned PDF OCR: page ${i}/${pdf.numPages}`,25+(i/pdf.numPages)*70);
+  }
+  await worker.terminate(); return text;
+}
+async function spreadsheet(file){
+  const data=await file.arrayBuffer(); const wb=XLSX.read(data,{type:'array'});
+  let text='';
+  for(const sn of wb.SheetNames) text+=XLSX.utils.sheet_to_csv(wb.Sheets[sn])+'\\n';
+  return text;
+}
+async function csv(file){return await file.text()}
+
+$('process').onclick=async()=>{
+  const file=$('file').files[0]; if(!file){alert('पहले statement चुनें');return}
+  try{
+    rows=[]; setStatus('File पढ़ना शुरू...',3);
+    let text='';
+    const ext=file.name.toLowerCase();
+    if(ext.endsWith('.pdf')) text=await pdfText(file);
+    else if(ext.endsWith('.xlsx')||ext.endsWith('.xls')) {setStatus('Excel पढ़ रहे हैं...',40);text=await spreadsheet(file)}
+    else text=await csv(file);
+    $('ocrText').value=text;
+    rows=parseLines(text);
+    setStatus(`पूरा हुआ — ${rows.length} transaction rows मिलीं`,100);
+    render();
+  }catch(e){console.error(e);setStatus('Error: '+e.message,0);alert('File पढ़ने में समस्या: '+e.message)}
+};
+['search','type','from','to'].forEach(id=>$(id).addEventListener('input',render));
+$('clear').onclick=()=>{rows=[];$('ocrText').value='';$('tbody').innerHTML='';render();setStatus('Cleared.',0)}
+$('csvOut').onclick=()=>{
+  const head='Date,Description,Debit,Credit,Balance,Raw\\n';
+  const body=rows.map(r=>[r.date,r.description,r.debit||'',r.credit||'',r.balance||'',r.raw].map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\\n');
+  download(new Blob([head+body],{type:'text/csv'}),'kaushal-finance-transactions.csv');
+}
+$('jsonOut').onclick=()=>download(new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}),'kaushal-finance-transactions.json');
+function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+const drop=$('drop');drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');$('file').files=e.dataTransfer.files}
+render();
+
+</script>
+
+
+</body>
+
+</html>
